@@ -15,7 +15,7 @@ def split_large_string(text, chunk_size=60000):
     chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
     return {f"chunk_{i}": chunk for i, chunk in enumerate(chunks)}
 ```
--- 原始数据
+ -- 原始数据
 ```txt
 large_text = "x" * 100000  # 超过65535字节
 ```
