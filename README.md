@@ -15,18 +15,18 @@ def split_large_string(text, chunk_size=60000):
     chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
     return {f"chunk_{i}": chunk for i, chunk in enumerate(chunks)}
 ```
- -- 原始数据
+ a. 原始数据
 ```txt
 large_text = "x" * 100000  # 超过65535字节
 ```
-    - 分片处理
+ b. 分片处理
 ```json
 chunked_data = {
     "metadata": {"total_chunks": 2, "original_length": len(large_text)},
     "content": split_large_string(large_text)
 }
 ```
-    - 插入Redshift
+ c. 插入Redshift
 ```sql
 INSERT INTO large_json_table VALUES (
     1, 
