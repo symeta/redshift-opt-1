@@ -437,3 +437,20 @@ WHERE tag IS NOT NULL AND tag != '';
 - 使用TRIM()处理多余空格
 - 大数据量时考虑先过滤再展开
 - 可以与LATERAL子查询结合使用更复杂的逻辑
+
+```sql
+WITH numbers AS (
+    SELECT 1 as n UNION ALL SELECT 2 UNION ALL SELECT 3 
+    UNION ALL SELECT 4 UNION ALL SELECT 5
+), 
+data AS (
+    SELECT 1 as id, 'a,b,c,d'::varchar as tags
+)
+SELECT 
+    d.id, 
+    SPLIT_PART(d.tags, ',', n.n) as tag_value
+FROM data d 
+CROSS JOIN numbers n 
+WHERE SPLIT_PART(d.tags, ',', n.n) <> ''
+ORDER BY d.id, n.n
+```
