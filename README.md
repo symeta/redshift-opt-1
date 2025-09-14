@@ -1,4 +1,5 @@
 # redshift-opt-1
+（以下优化建议涉及的脚本/代码只为示例，如使用需要根据对应的语法和业务场景进行调试和测试。）
 
 ## 使用redshift遇到超长字符串兼容问题，即使使用super仍然会有这个问题，比如json的value超过65535不可用。解决这个问题有什么建议么？
 
@@ -145,6 +146,7 @@ SELECT JSON_PARSE('{
 # Redshift中的python udf函数从11月1日开始停止支持，有什么替代方案么？
 
 [Redshift Python UDF](https://docs.aws.amazon.com/redshift/latest/dg/user-defined-functions.html)
+
 **2025年11月1日之前创建的Python UDF还可以继续使用**
 
 几个替代方向：
@@ -245,3 +247,193 @@ END;
 $$;
 ```
 
+# Redshift中的宽表（超过200字段的表）从s3中copy写入redshift时缓慢，有什么优化方向么？
+
+针对Redshift宽表COPY性能问题，有以下优化方向：
+
+## 1. 文件格式优化
+
+- 使用Parquet格式（推荐）
+```sql
+COPY wide_table FROM 's3://bucket/data/'
+IAM_ROLE 'arn:aws:iam::account:role/RedshiftRole'
+FORMAT AS PARQUET;
+```
+- 使用压缩的分隔符文件
+```sql
+COPY wide_table FROM 's3://bucket/data/'
+IAM_ROLE 'arn:aws:iam::account:role/RedshiftRole'
+DELIMITER '|'
+GZIP;
+```
+
+## 2. 并行度优化
+
+- 确保文件数量是slice数量的倍数
+- 例如：8个slice的集群，使用8/16/32个文件
+- 使用manifest文件控制并行度
+```sql
+COPY wide_table FROM 's3://bucket/manifest.json'
+IAM_ROLE 'arn:aws:iam::account:role/RedshiftRole'
+MANIFEST;
+```
+
+## 3. 表设计优化
+
+- 选择合适的分布键和排序键
+```sql
+CREATE TABLE wide_table (
+    id BIGINT DISTKEY,
+    timestamp TIMESTAMP SORTKEY,
+    col1 VARCHAR(50),
+    col2 INTEGER,
+    -- ... 其他字段
+) 
+DISTSTYLE KEY;
+```
+
+- 考虑列式压缩
+```sql
+ALTER TABLE wide_table ALTER COLUMN text_col ENCODE LZO;
+ALTER TABLE wide_table ALTER COLUMN int_col ENCODE DELTA;
+```
+
+## 4. COPY参数优化
+
+```sql
+COPY wide_table FROM 's3://bucket/data/'
+IAM_ROLE 'arn:aws:iam::account:role/RedshiftRole'
+FORMAT AS PARQUET
+COMPUPDATE OFF          -- 跳过压缩分析
+STATUPDATE OFF          -- 跳过统计信息更新
+MAXERROR 1000          -- 允许一定错误
+ACCEPTINVCHARS         -- 处理无效字符
+TRUNCATECOLUMNS;       -- 截断超长字段
+```
+
+## 5. 分批加载策略
+
+```sql
+# 分批处理大文件
+import boto3
+
+def split_and_load():
+    # 按时间或大小分割数据
+    for batch in data_batches:
+        copy_sql = f"""
+        COPY wide_table FROM 's3://bucket/batch_{batch}/'
+        IAM_ROLE 'arn:aws:iam::account:role/RedshiftRole'
+        FORMAT AS PARQUET;
+        """
+        execute_sql(copy_sql)
+```
+
+## 6. 预处理优化
+
+- 使用临时表先加载，再转换
+```sql
+CREATE TEMP TABLE staging_table (LIKE wide_table);
+
+COPY staging_table FROM 's3://bucket/data/'
+IAM_ROLE 'arn:aws:iam::account:role/RedshiftRole'
+FORMAT AS PARQUET;
+```
+- 批量插入到目标表
+```sql
+INSERT INTO wide_table 
+SELECT * FROM staging_table;
+```
+
+## 7. 集群配置优化
+
+• **节点类型**: 使用ra3.xlplus或ra3.4xlarge
+• **节点数量**: 确保有足够的slice处理并发
+• **WLM配置**: 为COPY操作分配专用队列
+
+- 创建专用WLM队列
+- 在参数组中设置：
+- wlm_json_configuration = [{"query_group": "copy_queue", "memory_percent": 50, "concurrency": 2}]
+```sql
+SET query_group TO 'copy_queue';
+COPY wide_table FROM 's3://bucket/data/' ...;
+```
+
+## 8. 监控和诊断
+- 查看COPY性能
+```sql
+SELECT query, starttime, endtime, 
+       DATEDIFF(seconds, starttime, endtime) as duration
+FROM stl_query 
+WHERE querytxt LIKE 'COPY%'
+ORDER BY starttime DESC;
+```
+- 检查数据倾斜
+```sql
+SELECT slice, COUNT(*) 
+FROM stv_tbl_perm 
+WHERE name = 'wide_table'
+GROUP BY slice;
+```
+
+# 对于一行转多行的场景，有没有什么快捷方式实现？比如a,b,c,d怎么快速根据逗号切分形成一列？
+
+Redshift中实现一行转多行有几种方式：
+
+## 1. 使用SPLIT_TO_ARRAY + UNNEST（推荐）
+
+- 基本用法
+```sql
+SELECT 
+    id,
+    UNNEST(SPLIT_TO_ARRAY(tags, ',')) as tag
+FROM (
+    SELECT 1 as id, 'a,b,c,d' as tags
+    UNION ALL
+    SELECT 2 as id, 'x,y,z' as tags
+);
+
+- 结果：
+```sql
+ id | tag
+ 1  | a
+ 1  | b  
+ 1  | c
+ 1  | d
+ 2  | x
+ 2  | y
+ 2  | z
+```
+
+## 2. 带序号的展开
+```sql
+SELECT 
+    id,
+    tag,
+    ROW_NUMBER() OVER (PARTITION BY id ORDER BY tag) as position
+FROM (
+    SELECT 
+        id,
+        UNNEST(SPLIT_TO_ARRAY(tags, ',')) as tag
+    FROM source_table
+);
+```
+
+## 3. 处理空值和去重
+```sql
+SELECT DISTINCT
+    id,
+    TRIM(tag) as tag  -- 去除空格
+FROM (
+    SELECT 
+        id,
+        UNNEST(SPLIT_TO_ARRAY(tags, ',')) as tag
+    FROM source_table
+)
+WHERE tag IS NOT NULL AND tag != '';
+```
+
+## 注意事项
+• SPLIT_TO_ARRAY在空字符串时返回包含空字符串的数组
+• 使用TRIM()处理多余空格
+• 大数据量时考虑先过滤再展开
+• 可以与LATERAL子查询结合使用更复杂的逻辑
