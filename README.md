@@ -1,6 +1,10 @@
 # redshift-opt-1
 
 ## 使用redshift遇到超长字符串兼容问题，即使使用super仍然会有这个问题，比如json的value超过65535不可用。解决这个问题有什么建议么？
+
+[Redshift Super Type Limitations](https://docs.aws.amazon.com/redshift/latest/dg/limitations-super.html)
+
+## 优化建议：
 ### 1. 字符串分片存储
 - 将长字符串拆分成多个字段
 ```sql
@@ -144,3 +148,107 @@ SELECT JSON_PARSE('{
 - **偶尔访问大内容** → 方案3（S3外部存储）
 - **内容可压缩** → 方案4（压缩存储）
 - **结构化程度高** → 方案5（分表存储）
+
+# Redshift中的python udf函数从11月1日开始停止支持，有什么替代方案么？
+
+[Redshift Python UDF](https://docs.aws.amazon.com/redshift/latest/dg/user-defined-functions.html)
+**2025年11月1日之前创建的Python UDF还可以继续使用**
+
+几个替代方向：
+## 1. SQL UDF（推荐）
+用纯SQL重写逻辑，性能最佳：
+- 替代Python字符串处理
+
+```sql
+CREATE OR REPLACE FUNCTION clean_phone(phone VARCHAR(50))
+RETURNS VARCHAR(50)
+STABLE
+AS $$
+  SELECT REGEXP_REPLACE(REGEXP_REPLACE(phone, '[^0-9]', '', 'g'), '^1', '')
+$$;
+```
+- 替代Python数学计算
+```sql
+CREATE OR REPLACE FUNCTION calculate_score(base_score INT, multiplier DECIMAL)
+RETURNS DECIMAL
+IMMUTABLE
+AS $$
+  SELECT CASE 
+    WHEN base_score IS NULL THEN 0
+    ELSE base_score * COALESCE(multiplier, 1.0)
+  END
+$$;
+```
+## 2. Lambda UDF
+对于复杂逻辑，使用Lambda函数：
+- 创建Lambda UDF
+
+```sql
+CREATE OR REPLACE EXTERNAL FUNCTION process_json(input VARCHAR(MAX))
+RETURNS VARCHAR(MAX)
+STABLE
+LAMBDA 'arn:aws:lambda:us-east-1:123456789012:function:redshift-json-processor';
+```
+
+- 使用Lambda UDF
+```sql
+SELECT id, process_json(raw_data) as processed_data
+FROM my_table;
+```
+
+Lambda函数示例（Python）：
+```python
+import json
+
+def lambda_handler(event, context):
+    results = []
+    for record in event['arguments']:
+        input_data = record[0]
+        # 处理逻辑
+        processed = json.loads(input_data)
+        processed['timestamp'] = int(time.time())
+        results.append(json.dumps(processed))
+    
+    return {'results': results}
+```
+
+## 3. 预处理数据
+在ETL阶段处理数据：
+```python
+# 使用pandas/boto3预处理
+import pandas as pd
+import boto3
+
+def preprocess_data():
+    # 从S3读取原始数据
+    df = pd.read_csv('s3://bucket/raw-data.csv')
+    
+    # 应用复杂逻辑
+    df['processed_field'] = df['raw_field'].apply(complex_function)
+    
+    # 写回S3
+    df.to_csv('s3://bucket/processed-data.csv', index=False)
+    
+    # 使用COPY命令加载到Redshift
+```
+
+## 4. 存储过程
+对于复杂的批处理逻辑：
+```sql
+CREATE OR REPLACE PROCEDURE batch_process()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- 复杂的数据处理逻辑
+    UPDATE target_table 
+    SET processed_field = CASE 
+        WHEN condition1 THEN value1
+        WHEN condition2 THEN value2
+        ELSE default_value
+    END;
+    
+    COMMIT;
+END;
+$$;
+```
+
