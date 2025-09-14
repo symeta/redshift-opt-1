@@ -72,7 +72,6 @@ INSERT INTO table VALUES (JSON_PARSE('{
 
 ### 4. 压缩存储
 ```py
-python
 import gzip
 import base64
 import json
@@ -142,12 +141,6 @@ SELECT JSON_PARSE('{
     "original_length": ' || LENGTH(large_text) || '
 }');
 ```
-
-## 推荐方案选择
-- **频繁查询完整内容** → 方案1（分片存储）
-- **偶尔访问大内容** → 方案3（S3外部存储）
-- **内容可压缩** → 方案4（压缩存储）
-- **结构化程度高** → 方案5（分表存储）
 
 # Redshift中的python udf函数从11月1日开始停止支持，有什么替代方案么？
 
