@@ -391,7 +391,7 @@ FROM (
     UNION ALL
     SELECT 2 as id, 'x,y,z' as tags
 );
-
+```
 - 结果：
 ```sql
  id | tag
