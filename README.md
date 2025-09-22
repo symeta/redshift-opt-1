@@ -145,8 +145,8 @@ SELECT JSON_PARSE('{
 
 # Redshift中的python udf函数从11月1日开始停止支持，有什么替代方案么？
 
--[Redshift Python UDF](https://docs.aws.amazon.com/redshift/latest/dg/user-defined-functions.html)
--[The BLog](https://aws.amazon.com/cn/blogs/big-data/amazon-redshift-python-user-defined-functions-will-reach-end-of-support-after-june-30-2026/)
+- [Redshift Python UDF](https://docs.aws.amazon.com/redshift/latest/dg/user-defined-functions.html)
+- [The BLog](https://aws.amazon.com/cn/blogs/big-data/amazon-redshift-python-user-defined-functions-will-reach-end-of-support-after-june-30-2026/)
 
 **2025年11月1日之前创建的Python UDF还可以继续使用**
 
