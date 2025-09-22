@@ -380,58 +380,21 @@ GROUP BY slice;
 
 Redshift中实现一行转多行有几种方式：
 
-## 1. 使用SPLIT_TO_ARRAY + UNNEST（推荐）
-
-- 基本用法
+## 使用SPLIT_TO_ARRAY
 ```sql
-SELECT 
-    id,
-    UNNEST(SPLIT_TO_ARRAY(tags, ',')) as tag
-FROM (
+WITH input AS (
     SELECT 1 as id, 'a,b,c,d' as tags
     UNION ALL
     SELECT 2 as id, 'x,y,z' as tags
-);
-```
-- 结果：
-```sql
- id | tag
- 1  | a
- 1  | b  
- 1  | c
- 1  | d
- 2  | x
- 2  | y
- 2  | z
-```
-
-## 2. 带序号的展开
-```sql
-SELECT 
-    id,
-    tag,
-    ROW_NUMBER() OVER (PARTITION BY id ORDER BY tag) as position
-FROM (
-    SELECT 
-        id,
-        UNNEST(SPLIT_TO_ARRAY(tags, ',')) as tag
-    FROM source_table
-);
-```
-
-## 3. 处理空值和去重
-```sql
-SELECT DISTINCT
-    id,
-    TRIM(tag) as tag  -- 去除空格
-FROM (
-    SELECT 
-        id,
-        UNNEST(SPLIT_TO_ARRAY(tags, ',')) as tag
-    FROM source_table
+),
+supered as (
+select id, split_to_array(tags) as tags from input
 )
-WHERE tag IS NOT NULL AND tag != '';
+ 
+select o1.id, o2 from supered o1, o1.tags o2
 ```
+
+<img width="904" height="618" alt="Screenshot 2025-09-22 at 17 09 19" src="https://github.com/user-attachments/assets/ee9c209e-9fce-4ada-9181-1abd1f800634" />
 
 ## 注意事项
 - SPLIT_TO_ARRAY在空字符串时返回包含空字符串的数组
@@ -439,19 +402,4 @@ WHERE tag IS NOT NULL AND tag != '';
 - 大数据量时考虑先过滤再展开
 - 可以与LATERAL子查询结合使用更复杂的逻辑
 
-```sql
-WITH numbers AS (
-    SELECT 1 as n UNION ALL SELECT 2 UNION ALL SELECT 3 
-    UNION ALL SELECT 4 UNION ALL SELECT 5
-), 
-data AS (
-    SELECT 1 as id, 'a,b,c,d'::varchar as tags
-)
-SELECT 
-    d.id, 
-    SPLIT_PART(d.tags, ',', n.n) as tag_value
-FROM data d 
-CROSS JOIN numbers n 
-WHERE SPLIT_PART(d.tags, ',', n.n) <> ''
-ORDER BY d.id, n.n
-```
+
