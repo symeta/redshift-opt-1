@@ -402,24 +402,10 @@ select o1.id, o2 from supered o1, o1.tags o2
 - 大数据量时考虑先过滤再展开
 - 可以与LATERAL子查询结合使用更复杂的逻辑
 
-
-Option 1: Use the user-accessible equivalent
-sql
-SELECT * FROM sys_query_history 
-WHERE query_type = 'INSERT';
-
-
-Option 2: Grant superuser privileges to your user
-You need to connect as a user with superuser privileges and run:
-sql
-ALTER USER admin CREATEUSER;
-
-
-Option 3: Use alternative system tables that don't require superuser
-sql
--- For query information
-SELECT * FROM stv_recents WHERE status = 'Running' OR status = 'Done';
-
--- For load information  
-SELECT * FROM stl_load_commits;
+## Redshift Serverless: run SELECT * FROM stl_insert limit 10; return error: permission denied for relation stl_insert
+Use the user-accessible equivalent
+```sql
+SELECT * FROM sys_query_history WHERE query_type = 'INSERT';
+```
+For Redshift Serverless, uses tables beginning with 'sys' rather than others in terms of system table analyzing.
 
