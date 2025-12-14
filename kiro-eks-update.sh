@@ -180,3 +180,8 @@ eks-distro-now-supports-kubernetes-ve...
  ▸ Credits: 0.39 • Time: 2m 14s
 
 > 
+
+Upgrade Duration:
+- **Start Time**: 17:47:58 (December 14, 2025)
+- **Current Time**: 18:03:48 (December 14, 2025)
+- **Approximate Duration**: ~16 minutes
